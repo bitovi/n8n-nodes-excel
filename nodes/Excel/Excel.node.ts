@@ -7,6 +7,10 @@ import {
 } from 'n8n-workflow';
 import xlsx from 'xlsx';
 
+enum Action {
+	ADD_SHEET = 'addSheet',
+	LIST_SHEETS = 'listSheets',
+}
 export class Excel implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'Excel',
@@ -29,8 +33,12 @@ export class Excel implements INodeType {
 				noDataExpression: true,
 				options: [
 					{
+						name: 'Add Sheet',
+						value: Action.ADD_SHEET,
+					},
+					{
 						name: 'List Sheets',
-						value: 'listSheets',
+						value: Action.LIST_SHEETS,
 					},
 				],
 				default: 'listSheets',
@@ -42,6 +50,44 @@ export class Excel implements INodeType {
 				noDataExpression: false,
 				default: 'data',
 			},
+			{
+				displayName: 'Sheet Name',
+				name: 'sheetName',
+				type: 'string',
+				noDataExpression: false,
+				required: true,
+				default: '',
+				displayOptions: {
+					show: {
+						operation: [Action.ADD_SHEET],
+					},
+				},
+			},
+			{
+				displayName: 'Sheet Contents',
+				name: 'sheetContents',
+				type: 'json',
+				noDataExpression: false,
+				required: true,
+				default: '[]',
+				displayOptions: {
+					show: {
+						operation: [Action.ADD_SHEET],
+					},
+				},
+			},
+			{
+				displayName: 'Include Hidden Sheets',
+				name: 'includeHiddenSheets',
+				type: 'boolean',
+				noDataExpression: false,
+				default: false,
+				displayOptions: {
+					show: {
+						operation: [Action.LIST_SHEETS],
+					},
+				},
+			},
 		],
 	};
 
@@ -51,26 +97,50 @@ export class Excel implements INodeType {
 		const returnData: INodeExecutionData[] = [];
 
 		for (let i = 0; i < items.length; i++) {
-			const operation = this.getNodeParameter('operation', i) as string;
+			const operation = this.getNodeParameter('operation', i) as Action;
 			const binaryPropertyName = this.getNodeParameter('binaryPropertyName', i) as string;
 
+			const binary = items[i].binary?.[binaryPropertyName];
+
+			if (!binary) {
+				throw new NodeOperationError(
+					this.getNode(),
+					`Binary property "${binaryPropertyName}" not found.`,
+				);
+			}
+
+			const { data: binaryData, fileName, mimeType } = binary;
+			const workbook = xlsx.read(Buffer.from(binaryData, 'base64'), { type: 'buffer' });
+
 			switch (operation) {
-				case 'listSheets': {
-					if (!items[i].binary?.[binaryPropertyName]) {
-						throw new NodeOperationError(
-							this.getNode(),
-							`Binary property "${binaryPropertyName}" not found.`,
-						);
-					}
+				case Action.ADD_SHEET: {
+					const sheetName = this.getNodeParameter('sheetName', i) as string;
+					const sheetContents = this.getNodeParameter('sheetContents', i) as Record<string, any>[];
 
-					const binaryData = items[i].binary![binaryPropertyName].data;
-					const buffer = Buffer.from(binaryData, 'base64');
+					xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet(sheetContents), sheetName);
 
-					const workbook = xlsx.read(buffer, { type: 'buffer' });
-
-					const visibleSheetNames = workbook.SheetNames.filter(sheetName => {
-						return !workbook.Workbook?.Sheets?.find(s => s.name === sheetName)?.Hidden;
+					returnData.push({
+						json: {},
+						binary: {
+							data: {
+								data: xlsx.write(workbook, { type: 'buffer' }).toString('base64'),
+								mimeType,
+								fileName,
+							},
+						},
 					});
+
+					break;
+				}
+				case Action.LIST_SHEETS: {
+					const includeHiddenSheets = this.getNodeParameter('includeHiddenSheets', i) as boolean;
+
+					const visibleSheetNames = includeHiddenSheets
+						? workbook.SheetNames
+						: workbook.SheetNames.filter(
+								(sheetName) =>
+									!workbook.Workbook?.Sheets?.find(({ name }) => name === sheetName)?.Hidden,
+							);
 
 					returnData.push({
 						json: {
