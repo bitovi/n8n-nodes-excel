@@ -122,7 +122,7 @@ export class Excel implements INodeType {
 					returnData.push({
 						json: {},
 						binary: {
-							data: {
+							[binaryPropertyName]: {
 								data: xlsx.write(workbook, { type: 'buffer' }).toString('base64'),
 								mimeType,
 								fileName,
