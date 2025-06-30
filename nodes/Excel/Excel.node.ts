@@ -140,6 +140,7 @@ export class Excel implements INodeType {
 				case Action.DELETE_SHEET: {
 					const sheetName = this.getNodeParameter('sheetName', i) as string;
 
+					workbook.SheetNames = workbook.SheetNames.filter(name => name !== sheetName);
 					delete workbook.Sheets[sheetName];
 
 					returnData.push({
