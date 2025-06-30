@@ -9,6 +9,7 @@ import xlsx from 'xlsx';
 
 enum Action {
 	ADD_SHEET = 'addSheet',
+	DELETE_SHEET = 'deleteSheet',
 	LIST_SHEETS = 'listSheets',
 }
 export class Excel implements INodeType {
@@ -37,6 +38,10 @@ export class Excel implements INodeType {
 						value: Action.ADD_SHEET,
 					},
 					{
+						name: 'Delete Sheet',
+						value: Action.DELETE_SHEET,
+					},
+					{
 						name: 'List Sheets',
 						value: Action.LIST_SHEETS,
 					},
@@ -59,7 +64,7 @@ export class Excel implements INodeType {
 				default: '',
 				displayOptions: {
 					show: {
-						operation: [Action.ADD_SHEET],
+						operation: [Action.ADD_SHEET, Action.DELETE_SHEET],
 					},
 				},
 			},
@@ -118,6 +123,24 @@ export class Excel implements INodeType {
 					const sheetContents = this.getNodeParameter('sheetContents', i) as Record<string, any>[];
 
 					xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet(sheetContents), sheetName);
+
+					returnData.push({
+						json: {},
+						binary: {
+							[binaryPropertyName]: {
+								data: xlsx.write(workbook, { type: 'buffer' }).toString('base64'),
+								mimeType,
+								fileName,
+							},
+						},
+					});
+
+					break;
+				}
+				case Action.DELETE_SHEET: {
+					const sheetName = this.getNodeParameter('sheetName', i) as string;
+
+					delete workbook.Sheets[sheetName];
 
 					returnData.push({
 						json: {},
